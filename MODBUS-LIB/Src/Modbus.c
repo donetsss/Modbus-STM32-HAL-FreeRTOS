@@ -81,6 +81,7 @@ const osSemaphoreAttr_t ModBusSphr_attributes = {
 
 
 uint8_t numberHandlers = 0;
+modbusHandler_t *mHandlers[MAX_M_HANDLERS];
 
 
 static void sendTxBuffer(modbusHandler_t *modH);
@@ -333,23 +334,22 @@ void ModbusStart(modbusHandler_t * modH)
 
 	if (modH->xTypeHW == USART_HW || modH->xTypeHW ==  USART_HW_DMA )
 	{
+		if (modH->EN_Port != NULL )
+		{
+			/* Устанавливается уровень GPIO_PIN_RESET, хотя в комментарии указано, что на передачу.
+			 * Весьма вероятно что где-то ошибка. */
+			HAL_GPIO_WritePin(modH->EN_Port, modH->EN_Pin, GPIO_PIN_RESET);		// return RS485 transceiver to transmit mode
+		}
 
-	      if (modH->EN_Port != NULL )
-          {
-              // return RS485 transceiver to transmit mode
-          	HAL_GPIO_WritePin(modH->EN_Port, modH->EN_Pin, GPIO_PIN_RESET);
-          }
+		if (modH->uModbusType == MB_SLAVE &&  modH->u16regs == NULL )
+		{
+			while(1); 		// ERROR define the DATA pointer shared through Modbus
+		}
 
-          if (modH->uModbusType == MB_SLAVE &&  modH->u16regs == NULL )
-          {
-          	while(1); //ERROR define the DATA pointer shared through Modbus
-          }
-
-          //check that port is initialized
-          while (HAL_UART_GetState(modH->port) != HAL_UART_STATE_READY)
-          {
-
-          }
+		while (HAL_UART_GetState(modH->port) != HAL_UART_STATE_READY)
+		{
+			// check that port is initialized
+		}
 
 #if ENABLE_USART_DMA ==1
           if( modH->xTypeHW == USART_HW_DMA )
@@ -627,108 +627,103 @@ void  TCPinitserver(modbusHandler_t *modH)
 void StartTaskModbusSlave(void *argument)
 {
 
-  modbusHandler_t *modH =  (modbusHandler_t *)argument;
-  //uint32_t notification;
+	modbusHandler_t *modH =  (modbusHandler_t *)argument;
+	//uint32_t notification;
 
-#if ENABLE_TCP ==1
-  if( modH->xTypeHW == TCP_HW )
-  {
-	  TCPinitserver(modH); // start the Modbus server slave
-  }
-#endif
-
-  for(;;)
-  {
-
-	modH->i8lastError = 0;
-
-
-#if ENABLE_USB_CDC ==1
-
-	  if(modH-> xTypeHW == USB_CDC_HW)
-	  {
-		      ulTaskNotifyTake(pdTRUE, portMAX_DELAY); /* Block indefinitely until a Modbus Frame arrives */
-			  if (modH->u8BufferSize == ERR_BUFF_OVERFLOW) // is this necessary?
-			  {
-			     modH->i8lastError = ERR_BUFF_OVERFLOW;
-			  	 modH->u16errCnt++;
-			  	 continue;
-			  }
-	  }
-#endif
-
-#if ENABLE_TCP ==1
-	  if(modH-> xTypeHW == TCP_HW)
-	  {
-
-		  if(TCPwaitConnData(modH) == false) // wait for connection and receive data
-		  {
-			continue; // TCP package was not validated
-		  }
-
-	  }
-#endif
-
-
-   if(modH->xTypeHW == USART_HW || modH->xTypeHW == USART_HW_DMA)
-   {
-
-	  ulTaskNotifyTake(pdTRUE, portMAX_DELAY); /* Block until a Modbus Frame arrives */
-
-	  if (getRxBuffer(modH) == ERR_BUFF_OVERFLOW)
-	  {
-	      modH->i8lastError = ERR_BUFF_OVERFLOW;
-	   	  modH->u16errCnt++;
-		  continue;
-	  }
-
-   }
-
-   if (modH->u8BufferSize < 7)
-   {
-      //The size of the frame is invalid
-      modH->i8lastError = ERR_BAD_SIZE;
-      modH->u16errCnt++;
-
-	  continue;
-    }
-
-
-   // check slave id
-    if ( modH->u8Buffer[ID] !=  modH->u8id)
+#if ENABLE_TCP == 1
+	if( modH->xTypeHW == TCP_HW )
 	{
+		TCPinitserver(modH); // start the Modbus server slave
+	}
+#endif
+
+	for(;;)
+	{
+		modH->i8lastError = 0;
+
+
+#if ENABLE_USB_CDC == 1
+
+		if(modH-> xTypeHW == USB_CDC_HW)
+		{
+			ulTaskNotifyTake(pdTRUE, portMAX_DELAY); /* Block indefinitely until a Modbus Frame arrives */
+			if (modH->u8BufferSize == ERR_BUFF_OVERFLOW) // is this necessary?
+			{
+				modH->i8lastError = ERR_BUFF_OVERFLOW;
+			  	modH->u16errCnt++;
+			  	continue;
+			}
+		}
+#endif
+
+#if ENABLE_TCP == 1
+		if(modH-> xTypeHW == TCP_HW)
+		{
+			if(TCPwaitConnData(modH) == false) // wait for connection and receive data
+			{
+				continue; // TCP package was not validated
+			}
+		}
+#endif
+
+
+		if(modH->xTypeHW == USART_HW || modH->xTypeHW == USART_HW_DMA)
+		{
+			ulTaskNotifyTake(pdTRUE, portMAX_DELAY); 	/* Block until a Modbus Frame arrives */
+
+			if (getRxBuffer(modH) == ERR_BUFF_OVERFLOW)
+			{
+				modH->i8lastError = ERR_BUFF_OVERFLOW;
+				modH->u16errCnt++;
+				continue;
+			}
+		}
+
+		if (modH->u8BufferSize < 7)
+		{
+			// The size of the frame is invalid
+			modH->i8lastError = ERR_BAD_SIZE;
+			modH->u16errCnt++;
+
+			continue;
+		}
+
+		/* Проверка, приходящего slave id. */
+		if (modH->u8Buffer[ID] != modH->u8id)
+		{
 
 #if ENABLE_TCP == 0
-    	continue; // continue this is not for us
+			continue; 			// continue this is not for us
 #else
-    	if(modH->xTypeHW != TCP_HW)
-    	{
-    		continue; //for Modbus TCP this is not validated, user should modify accordingly if needed
-    	}
+			if(modH->xTypeHW != TCP_HW)
+			{
+				continue; 		// for Modbus TCP this is not validated, user should modify accordingly if needed
+			}
 #endif
-	 }
-
-	  // validate message: CRC, FCT, address and size
-    uint8_t u8exception = validateRequest(modH);
-	if (u8exception > 0)
-	{
-	    if (u8exception != ERR_TIME_OUT)
-		{
-		    buildException( u8exception, modH);
-			sendTxBuffer(modH);
 		}
-		modH->i8lastError = u8exception;
-		//return u8exception
 
-		continue;
-	 }
+		// validate message: CRC, FCT, address and size
+		uint8_t u8exception = validateRequest(modH);
+		if (u8exception > 0)
+		{
+			if (u8exception != ERR_TIME_OUT)
+			{
+				buildException( u8exception, modH);
+				sendTxBuffer(modH);
+			}
 
-	 modH->i8lastError = 0;
-	xSemaphoreTake(modH->ModBusSphrHandle , portMAX_DELAY); //before processing the message get the semaphore
+			modH->i8lastError = u8exception;
+			// return u8exception
 
-	 // process message
-	 switch(modH->u8Buffer[ FUNC ] )
-	 {
+			continue;
+		}
+
+		modH->i8lastError = 0;
+		xSemaphoreTake(modH->ModBusSphrHandle, portMAX_DELAY); 	// before processing the message get the semaphore
+
+		// Обработка сообщения от master.
+		switch(modH->u8Buffer[ FUNC ] )
+		{
 			case MB_FC_READ_COILS:
 			case MB_FC_READ_DISCRETE_INPUT:
 				modH->i8state = process_FC1(modH);
@@ -751,18 +746,14 @@ void StartTaskModbusSlave(void *argument)
 				break;
 			default:
 				break;
-	 }
+		}
 
+		xSemaphoreGive(modH->ModBusSphrHandle); //Release the semaphore
 
-	 xSemaphoreGive(modH->ModBusSphrHandle); //Release the semaphore
-
-	 continue;
-
-   }
+		continue;
+	}
 
 }
-
-
 
 void ModbusQuery(modbusHandler_t * modH, modbus_t telegram )
 {

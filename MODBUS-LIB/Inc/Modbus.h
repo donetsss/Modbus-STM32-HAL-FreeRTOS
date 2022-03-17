@@ -19,6 +19,10 @@
 #include "timers.h"
 
 
+#ifdef __cplusplus
+	extern "C" {
+#endif
+
 typedef enum
 {
     USART_HW = 1,
@@ -172,17 +176,16 @@ tcpclients_t;
  */
 typedef struct
 {
-
-	mb_masterslave_t uModbusType;
-	UART_HandleTypeDef *port; //HAL Serial Port handler
-	uint8_t u8id; //!< 0=master, 1..247=slave number
-	GPIO_TypeDef* EN_Port; //!< flow control pin: 0=USB or RS-232 mode, >1=RS-485 mode
-	uint16_t EN_Pin;  //!< flow control pin: 0=USB or RS-232 mode, >1=RS-485 mode
+	mb_masterslave_t uModbusType;		// Тип modbus устройства MB_SLAVE или MB_MASTER.
+	UART_HandleTypeDef *port; 			// Порт UART, используемый для modbus соединения.
+	uint8_t u8id; 						// id устройства 0 = master, 1..247 = slave.
+	GPIO_TypeDef* EN_Port; 				// !< flow control pin: 0=USB or RS-232 mode, >1=RS-485 mode
+	uint16_t EN_Pin;  					// !< flow control pin: 0=USB or RS-232 mode, >1=RS-485 mode
 	mb_errot_t i8lastError;
-	uint8_t u8Buffer[MAX_BUFFER]; //Modbus buffer for communication
+	uint8_t u8Buffer[MAX_BUFFER]; 		// Буфер для обмена сообщениями, MAX_BUFFER определяется в конфиге ModbusConfig.h
 	uint8_t u8BufferSize;
 	uint8_t u8lastRec;
-	uint16_t *u16regs;
+	uint16_t *u16regs;					// Указатель на массив с данными? еще не разобрался
 	uint16_t u16InCnt, u16OutCnt, u16errCnt; //keep statistics of Modbus traffic
 	uint16_t u16timeOut;
 	uint16_t u16regsize;
@@ -231,7 +234,7 @@ enum
 
 
 
-modbusHandler_t *mHandlers[MAX_M_HANDLERS];
+
 
 // Function prototypes
 void ModbusInit(modbusHandler_t * modH);
@@ -283,5 +286,7 @@ void ModbusEnd(); //!<finish any communication and release serial communication 
 */
 
 
-
+#ifdef __cplusplus
+	}
+#endif
 #endif /* THIRD_PARTY_MODBUS_INC_MODBUS_H_ */

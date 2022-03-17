@@ -11,6 +11,7 @@
 #include "main.h"
 #include "Modbus.h"
 
+extern modbusHandler_t *mHandlers[MAX_M_HANDLERS];
 
 /**
  * @brief
@@ -65,9 +66,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
     int i;
     for (i = 0; i < numberHandlers; i++ )
     {
-    	if (mHandlers[i]->port == UartHandle  )
+    	if (mHandlers[i]->port == UartHandle)
     	{
-
     		if(mHandlers[i]->xTypeHW == USART_HW)
     		{
     			RingAdd(&mHandlers[i]->xBufferRX, mHandlers[i]->dataRX);
